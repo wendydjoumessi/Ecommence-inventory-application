@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const Token = require("../models/tokenModel");
 const crypto = require("crypto");
+const sendEmail = require("../utils/sendEmail");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "1d" });
@@ -241,6 +242,11 @@ const forgotPassword = asyncHandler(async (req, res) => {
     throw new Error("User does not exist");
   }
 
+  //Delete token if it exist in the database
+  let token = await Token.findOne({userId: user._id})
+  if(token){
+    await token.deleteOne();
+  }
   // create Reset token
   let resetToken = crypto.randomBytes(32).toString("hex") + user._id;
 
@@ -254,7 +260,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   await new Token({
     userId: user._id,
     token: hashedToken,
-    createAt: Date.now(),
+    createdAt: Date.now(),
     expiresAt: Date.now() + 30 * (60 * 1000), // Thirty minutes
   }).save();
 
@@ -271,7 +277,18 @@ const forgotPassword = asyncHandler(async (req, res) => {
     <p>Regards</P>
      <p>Ecommerce Team</P>
     `;
-  res.send("Forgot password");
+
+  const subject = "Password Reset Request";
+  const send_to = user.email;
+  const send_from = process.env.EMAIL_USER;
+
+  try {
+    await sendEmail(subject, message, send_to, send_from);
+    res.status(200).json({ success: true, message: "Reset Email sent" });
+  } catch (error) {
+    res.status(500);
+    throw new Error("Email not send please try again");
+  }
 });
 
 module.exports = {
